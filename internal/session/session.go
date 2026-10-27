@@ -2,7 +2,10 @@ package session
 
 import (
 	"io"
+	"os"
+	"os/signal"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/service-lasso/service-lasso-pty/internal/protocol"
@@ -40,6 +43,19 @@ func Run(spec pty.Spec, in io.Reader, out io.Writer) (int, error) {
 
 	var lastOutput atomic.Int64
 	lastOutput.Store(time.Now().UnixNano())
+	done := make(chan struct{})
+	defer close(done)
+	termination := make(chan os.Signal, 1)
+	signal.Notify(termination, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(termination)
+	go func() {
+		select {
+		case <-termination:
+			_ = process.Terminate()
+		case <-done:
+		}
+	}()
+
 	readerDone := make(chan struct{})
 	go func() {
 		defer close(readerDone)
